@@ -80,9 +80,9 @@ def main():
     print(f"bound c*M^2 + d:  c = {c:.4g}   d = {d:.4g}   (binds at M={mbind})")
 
     fig, ax = plt.subplots(figsize=(7.2, 5.0))
-    ax.fill_between(Ms, amin, amax, color=COL["APMM"], alpha=0.22, linewidth=0,
-                    label="APMM seed range (min–max)")
-    ax.plot(Ms, mean["APMM"], "o-", color=COL["APMM"], lw=2, ms=4, label="APMM (mean)")
+    ax.errorbar(Ms, mean["APMM"], yerr=[mean["APMM"] - amin, amax - mean["APMM"]],
+                fmt="o-", color=COL["APMM"], lw=2, ms=4, capsize=3, elinewidth=1.1,
+                label="APMM (mean, min–max)")
     ax.plot(Ms, mean["ind"], "s-", color=COL["ind"], lw=2, ms=4, label="ind (mean)")
     ax.plot(Ms, mean["base"], "^-", color=COL["base"], lw=1.6, ms=4,
             label="base (floor, mean)")

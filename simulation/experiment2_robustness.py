@@ -35,12 +35,14 @@ CENTER = dict(k=4, k_auto=False, support="pyramid", decay=1.25, b=10.0,
               rho=1.0, rho_0=5.0, n_steps=100, steps_per_M=10, n_settle=2000,
               seeds=40, base_seed=12345, M_list=[M])
 
-# (label, cfg-key, values, x-axis title, log-x?)
+# (label, cfg-key, swept values, x-axis title, log-x?, x-transform for plotting)
+# paper's rho = 1/decay: sweep code `decay` in 1..2.5, plot at x=1/decay, label rho.
+_ID = lambda v: v
 SWEEPS = [
-    ("rho",  "decay",       [0.1, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5], r"$\rho$ (support decay)", False),
-    ("Btheta", "rho_0",     [1, 2, 3, 4, 5],                       r"$B_\theta$ (magnitude)", False),
-    ("R",    "steps_per_M", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],       r"$R = T/M$ (re-quote freq.)", False),
-    ("k",    "k",           [2, 3, 4, 5, 6, 7, 8],                 r"$k$ (order)", False),
+    ("rho",  "decay",       [1.0, 1.25, 1.5, 1.75, 2.0, 2.5],      r"$\rho$", False, lambda v: 1.0 / v),
+    ("Btheta", "rho_0",     [1, 2, 3, 4, 5],                       r"$B_\theta$ (magnitude)", False, _ID),
+    ("R",    "steps_per_M", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],       r"$R = T/M$ (re-quote freq.)", False, _ID),
+    ("k",    "k",           [2, 3, 4, 5, 6, 7, 8],                 r"$k$ (order)", False, _ID),
 ]
 
 
@@ -115,23 +117,25 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     results = {}
     print(f"EXPERIMENT 2  robustness at M={M}  (center: rho=1.25 B_th=5 R=10 k=4)")
-    for label, key, values, xlabel, logx in SWEEPS:
+    for label, key, values, xlabel, logx, xf in SWEEPS:
         print(f"  sweep {label} ({key}):")
         xs, stats, _ = run_sweep(key, values)
-        results[label] = (xs, stats, xlabel, logx)
+        xplot = np.array([xf(v) for v in xs])          # e.g. rho panel plots at 1/decay
+        results[label] = (xplot, stats, xlabel, logx)
         fig, ax = plt.subplots(figsize=(5.2, 4.0))
-        panel(ax, xs, stats, xlabel, logx)
+        panel(ax, xplot, stats, xlabel, logx)
         ax.legend(frameon=False, fontsize=8)
         fig.tight_layout()
         for ext in ("png", "pdf"):
             fig.savefig(f"{OUT}/exp2_sweep_{label}.{ext}", dpi=200)
         plt.close(fig)
 
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
-    for axi, (label, key, values, xlabel, logx) in zip(axes.flat, SWEEPS):
-        xs, stats, xl, lx = results[label]
-        panel(axi, xs, stats, xl, lx)
-    axes.flat[0].legend(frameon=False, fontsize=8)
+    combined = [s for s in SWEEPS if s[0] != "R"]      # rho, B_theta, k (drop R sweep)
+    fig, axes = plt.subplots(1, len(combined), figsize=(5 * len(combined), 4.2))
+    for axi, (label, key, values, xlabel, logx, xf) in zip(axes, combined):
+        xplot, stats, xl, lx = results[label]
+        panel(axi, xplot, stats, xl, lx)
+    axes[0].legend(frameon=False, fontsize=8)
     fig.tight_layout()
     for ext in ("png", "pdf"):
         fig.savefig(f"{OUT}/exp2_all.{ext}", dpi=200)
