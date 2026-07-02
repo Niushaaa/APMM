@@ -37,7 +37,7 @@ def load_per_seed(support, decay, seeds, M_list, steps_per_M):
     dtag = decay_tag(support, decay)
     data = {}
     for M in M_list:
-        pat = (f"{RC}/res_M{M}_k*_{support}{dtag}_b10.0_rho1.0_r05.0_"
+        pat = (f"{RC}/resjs_M{M}_k*_{support}{dtag}_b10.0_rho1.0_r05.0_"
                f"T{steps_per_M*M}_ns2000_seeds{seeds}_bs{12345}.pkl")
         files = glob.glob(pat)
         if not files:

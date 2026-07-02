@@ -46,7 +46,7 @@ def _decay_tag(cfg):
 
 def result_path(M, kM, TM, cfg):
     """Cache path for one M's aggregated result, keyed by everything that affects it."""
-    return (f"{RESULT_DIR}/res_M{M}_k{kM}_{cfg['support']}{_decay_tag(cfg)}_b{cfg['b']}_"
+    return (f"{RESULT_DIR}/resjs_M{M}_k{kM}_{cfg['support']}{_decay_tag(cfg)}_b{cfg['b']}_"
             f"rho{cfg['rho']}_r0{cfg['rho_0']}_T{TM}_ns{cfg['n_settle']}_"
             f"seeds{cfg['seeds']}_bs{cfg['base_seed']}.pkl")
 
@@ -197,15 +197,16 @@ def build_low_order_flow(struct, k, mode, rho, rho_0, b, n_steps, seed, base_see
             marg[Sp] = m
         trades.append((S, marg))                       # one trade on the changed S
 
-    # final BASE marginals only (P(omega_i=1) per base market) -- the settlement law
-    base_p1 = np.array([marginal_from_Q(Q, struct, (i,), b)[1]
-                        for i in range(1, struct.M + 1)])
-    return dict(trades=trades, base_p1=base_p1, D=D, k=k, rho=rho, rho_0=rho_0,
+    # final CORRELATED joint over the 2^M atoms -- the settlement law
+    z = Q / b
+    w = np.exp(z - z.max())
+    joint_p = w / w.sum()
+    return dict(trades=trades, joint_p=joint_p, D=D, k=k, rho=rho, rho_0=rho_0,
                 b=b, n_steps=n_steps, seed=seed)
 
 
 def load_or_build_flow(struct, cfg, seed):
-    key = f"flow_M{struct.M}_k{cfg['k']}_{cfg['support']}{_decay_tag(cfg)}_b{cfg['b']}_" \
+    key = f"flowjs_M{struct.M}_k{cfg['k']}_{cfg['support']}{_decay_tag(cfg)}_b{cfg['b']}_" \
           f"rho{cfg['rho']}_r0{cfg['rho_0']}_steps{cfg['n_steps']}_seed{seed}.pkl"
     path = f"{FLOW_DIR}/{key}"
     if os.path.exists(path):
@@ -278,20 +279,22 @@ def run_model(name, klass, base_only, struct, flow, b):
     )
 
 
-def settle_flow(struct, execs, base_p1, n_settle, rng):
-    """Monte-Carlo expected net loss. Each instance draws the M base markets
-    independently from their final marginals (omega_i ~ Bernoulli(base_p1[i]));
-    that single base realization settles EVERY book (parlays included). The same
-    draw is used for all models. Returns name -> (mean_net_loss, std_over_draws)."""
+def settle_flow(struct, execs, joint_p, n_settle, rng):
+    """Monte-Carlo expected net loss. Each instance draws a realized atom from the
+    final CORRELATED joint (joint_p over the 2^M atoms); that atom settles EVERY
+    book (parlays via projecting the realized outcome onto their legs). The same
+    draws are used for all models. Returns name -> (mean_net_loss, std_over_draws)."""
     M = struct.M
     names = list(execs)
     # only books actually held (nonzero contracts) contribute to payout
     nz = {nm: [S for S in struct.legsets if execs[nm]["contracts"][S].any()]
           for nm in names}
+    atoms = rng.choice(len(joint_p), size=n_settle, p=joint_p)   # correlated draws
     s = {nm: 0.0 for nm in names}
     ss = {nm: 0.0 for nm in names}
-    for _ in range(n_settle):
-        omega = tuple(1 if rng.random() < base_p1[i] else 0 for i in range(M))
+    for a in atoms:
+        a = int(a)
+        omega = [(a >> (M - i)) & 1 for i in range(1, M + 1)]    # atom -> base outcome
         for nm in names:
             c = execs[nm]["contracts"]
             pay = sum(c[S][struct.out_index[S][tuple(omega[leg - 1] for leg in S)]]
@@ -367,7 +370,7 @@ def run(cfg):
             execs = {nm: run_model(nm, klass, base_only, struct, flow, cfg["b"])
                      for nm, klass, base_only in MODELS}
             srng = np.random.default_rng(cfg["base_seed"] + 10_000_000 + seed)
-            net = settle_flow(struct, execs, flow["base_p1"], cfg["n_settle"], srng)
+            net = settle_flow(struct, execs, flow["joint_p"], cfg["n_settle"], srng)
             for nm, _, _ in MODELS:
                 ex = execs[nm]
                 acc[nm]["net_loss"].append(net[nm][0])
@@ -489,8 +492,7 @@ def make_plots(cfg, summary):
     ax.axhline(0, color="0.7", lw=0.8)                 # net loss can be negative
     ax.set_xlabel("M (base events)")
     ax.set_ylabel("net operator loss (mean, log)")
-    ktitle = "ceil(sqrt M)" if cfg.get("k_auto") else cfg["k"]
-    ax.set_title(f"Net loss vs M  (k={ktitle}, {cfg['support']} support)")
+    ax.set_title("Net loss vs M")
     ax.legend()
     ax.grid(True, which="both", alpha=.3)
     fig.tight_layout()
@@ -512,8 +514,8 @@ def parse_args():
     p.add_argument("--decay", type=float, default=1.25,
                    help="pyramid per-level count decay: n_l = 2M / decay^(l-2)")
     p.add_argument("--b", type=float, default=10.0)
-    p.add_argument("--rho", type=float, default=0.5,
-                   help="per-level decay (<1): |dtheta_k| <= rho^k * rho_0")
+    p.add_argument("--rho", type=float, default=1.0,
+                   help="theta-increment per-level decay (retired; keep 1 = flat |dtheta|<=rho_0)")
     p.add_argument("--rho_0", type=float, default=10.0,
                    help="increment scale constant rho_0")
     p.add_argument("--n_steps", type=int, default=500,
