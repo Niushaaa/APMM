@@ -1,0 +1,11 @@
+.env
+.env.*
+.DS_Store
+**/.DS_Store
+__pycache__/
+**/__pycache__/
+*.pyc
+# separate project with its own git repo (not part of this repo)
+kalshi/
+# large regenerable flow cache (result_cache kept: small, holds computed results)
+simulation/results_exp1_loworder/flow_cache/
