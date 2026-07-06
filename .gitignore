@@ -11,3 +11,5 @@ kalshi/
 simulation/results_exp1_loworder/flow_cache/
 # large staged Kalshi data (re-stageable from kalshi/ via exp4_stage.py)
 simulation/exp4_data/
+simulation/exp4_multi_data/
+simulation/results_exp4_multi/
